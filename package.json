@@ -1,0 +1,25 @@
+{
+  "name": "audio-control-panel",
+  "version": "1.0.0",
+  "description": "Virtual Audio Cable Control Panel",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "dist": "electron-builder --publish=never"
+  },
+  "devDependencies": {
+    "electron": "^27.0.0",
+    "electron-builder": "^24.6.4"
+  },
+  "build": {
+    "appId": "com.yourcompany.audiocontrol",
+    "productName": "Audio Control Panel",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  }
+}
