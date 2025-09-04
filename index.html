@@ -2,7 +2,7 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Audio Control Panel</title>
+    <title>Phone Call Recorder</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -38,32 +38,19 @@
             letter-spacing: 1px;
             margin-bottom: 15px;
         }
-        .device-selector {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            margin-bottom: 10px;
-        }
-        select {
-            flex: 1;
-            padding: 10px;
-            border: 2px solid #e0e0e0;
-            border-radius: 8px;
-            font-size: 14px;
-            background: white;
-        }
         .audio-meter {
-            height: 30px;
+            height: 40px;
             background: #e0e0e0;
-            border-radius: 15px;
+            border-radius: 20px;
             overflow: hidden;
             position: relative;
-            margin-bottom: 5px;
+            margin-bottom: 10px;
+            border: 2px solid #ccc;
         }
         .audio-level {
             height: 100%;
             background: linear-gradient(90deg, #4ade80 0%, #fbbf24 70%, #ef4444 100%);
-            border-radius: 15px;
+            border-radius: 20px;
             transition: width 0.1s ease-out;
             width: 0%;
         }
@@ -120,11 +107,6 @@
             border-left-color: #10b981;
             color: #166534;
         }
-        .status.warning {
-            background: #fffbeb;
-            border-left-color: #f59e0b;
-            color: #92400e;
-        }
         input[type="text"] {
             width: 100%;
             padding: 10px;
@@ -160,30 +142,13 @@
 </head>
 <body>
     <div class="container">
-        <h1>🎙️ Audio Control Panel</h1>
+        <h1>🎙️ Phone Call Recorder</h1>
         
         <div class="section">
-            <div class="section-title">Recording Device (Virtual Cable Output)</div>
-            <div class="device-selector">
-                <select id="recordingDevice">
-                    <option value="">Select recording device...</option>
-                </select>
-                <button class="btn" style="width: auto; padding: 10px 15px;" onclick="refreshDevices()">🔄</button>
-            </div>
-            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Input Level:</div>
+            <div class="section-title">Audio Input Level</div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 10px;">Configure virtual audio cable as default input in Windows. Level shows when audio is flowing:</div>
             <div class="audio-meter">
-                <div class="audio-level" id="recordingLevel"></div>
-            </div>
-        </div>
-        
-        <div class="section">
-            <div class="section-title">Playback Device (Virtual Cable Input)</div>
-            <select id="playbackDevice" style="width: 100%; margin-bottom: 10px;">
-                <option value="">Select playback device...</option>
-            </select>
-            <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Output Level:</div>
-            <div class="audio-meter">
-                <div class="audio-level" id="playbackLevel"></div>
+                <div class="audio-level" id="inputLevel"></div>
             </div>
         </div>
         
@@ -201,7 +166,7 @@
         
         <div class="section">
             <div class="section-title">Playback</div>
-            <input type="text" id="audioUrl" placeholder="Paste ElevenLabs URL (or leave empty to select file)">
+            <input type="text" id="audioUrl" placeholder="Paste ElevenLabs URL (or leave empty to play last recording)">
             <button class="btn btn-play" onclick="playAudio()">Play Audio</button>
         </div>
         
@@ -212,7 +177,7 @@
             </button>
         </div>
         
-        <div class="status" id="status">Ready. Select your audio devices to begin.</div>
+        <div class="status" id="status">Ready. Configure virtual audio cable as default input, then record when ready.</div>
     </div>
 
     <script>
@@ -228,136 +193,28 @@
         
         // Initialize
         window.addEventListener('DOMContentLoaded', async () => {
-            // Request permissions first to get device labels
-            await requestAudioPermissions();
-            await refreshDevices();
-            if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            }
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
             
-            // Load saved settings
-            if (window.electronAPI) {
-                const settings = await window.electronAPI.loadSettings();
-                if (settings.recordingDevice) {
-                    document.getElementById('recordingDevice').value = settings.recordingDevice;
-                }
-                if (settings.playbackDevice) {
-                    document.getElementById('playbackDevice').value = settings.playbackDevice;
-                }
+            // Start audio level monitoring immediately  
+            try {
+                await startAudioMonitoring();
+                updateStatus('Audio monitoring active. Record when ready.', 'success');
+            } catch (error) {
+                updateStatus('Click record button to enable audio monitoring', 'info');
             }
         });
         
-        // Request audio permissions to get device labels
-        async function requestAudioPermissions() {
+        // Start audio monitoring automatically
+        async function startAudioMonitoring() {
             try {
-                // Request microphone access to get device labels
-                const stream = await navigator.mediaDevices.getUserMedia({ 
-                    audio: true,
-                    video: false 
-                });
-                // Immediately stop the stream - we just needed permission
-                stream.getTracks().forEach(track => track.stop());
-                return true;
-            } catch (error) {
-                console.log('Permission request failed:', error);
-                updateStatus('Please allow microphone access to see device names', 'warning');
-                return false;
-            }
-        }
-        
-        // Refresh devices
-        async function refreshDevices() {
-            try {
-                // Try to get permissions if we don't have them
-                const hasPermission = await requestAudioPermissions();
-                
-                const devices = await navigator.mediaDevices.enumerateDevices();
-                const recordingSelect = document.getElementById('recordingDevice');
-                const playbackSelect = document.getElementById('playbackDevice');
-                
-                // Store current selections
-                const currentRecording = recordingSelect.value;
-                const currentPlayback = playbackSelect.value;
-                
-                recordingSelect.innerHTML = '<option value="">Select recording device...</option>';
-                playbackSelect.innerHTML = '<option value="">Select playback device...</option>';
-                
-                // Add audio inputs (for recording)
-                let inputCount = 0;
-                devices.filter(d => d.kind === 'audioinput').forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    
-                    // Better device labeling
-                    if (device.label) {
-                        option.textContent = device.label;
-                        // Highlight virtual cables
-                        if (device.label.toLowerCase().includes('cable') || 
-                            device.label.toLowerCase().includes('virtual')) {
-                            option.textContent = '🔌 ' + device.label;
-                        }
-                    } else {
-                        option.textContent = `Microphone ${++inputCount}`;
-                    }
-                    
-                    recordingSelect.appendChild(option);
-                });
-                
-                // Add audio outputs (for playback)
-                let outputCount = 0;
-                devices.filter(d => d.kind === 'audiooutput').forEach(device => {
-                    const option = document.createElement('option');
-                    option.value = device.deviceId;
-                    
-                    // Better device labeling
-                    if (device.label) {
-                        option.textContent = device.label;
-                        // Highlight virtual cables
-                        if (device.label.toLowerCase().includes('cable') || 
-                            device.label.toLowerCase().includes('virtual')) {
-                            option.textContent = '🔌 ' + device.label;
-                        }
-                    } else {
-                        option.textContent = `Speaker ${++outputCount}`;
-                    }
-                    
-                    playbackSelect.appendChild(option);
-                });
-                
-                // Restore selections if they still exist
-                if (currentRecording) recordingSelect.value = currentRecording;
-                if (currentPlayback) playbackSelect.value = currentPlayback;
-                
-                // Show helpful message if no virtual cables found
-                const hasCables = Array.from(recordingSelect.options).some(opt => 
-                    opt.textContent.includes('🔌'));
-                
-                if (!hasCables && hasPermission) {
-                    updateStatus('No virtual cables detected. Install VB-Cable or Virtual Audio Cable.', 'warning');
-                } else if (hasCables) {
-                    updateStatus('Devices refreshed. Virtual cables detected!', 'success');
-                } else {
-                    updateStatus('Devices refreshed', 'success');
+                // Resume AudioContext if suspended
+                if (audioContext.state === 'suspended') {
+                    await audioContext.resume();
                 }
                 
-            } catch (error) {
-                updateStatus('Error: ' + error.message, 'error');
-            }
-        }
-        
-        // Monitor input levels
-        document.getElementById('recordingDevice').addEventListener('change', async (e) => {
-            const deviceId = e.target.value;
-            if (!deviceId) return;
-            
-            try {
-                if (inputStream) {
-                    inputStream.getTracks().forEach(track => track.stop());
-                }
-                
+                // Get default audio input (user configures virtual cable as default)
                 inputStream = await navigator.mediaDevices.getUserMedia({
-                    audio: { 
-                        deviceId: { exact: deviceId },
+                    audio: {
                         echoCancellation: false,
                         noiseSuppression: false,
                         autoGainControl: false
@@ -370,22 +227,12 @@
                 source.connect(inputAnalyser);
                 
                 monitorInputLevel();
-                
-                // Show device name in status
-                const deviceLabel = e.target.options[e.target.selectedIndex].text;
-                updateStatus(`Connected to: ${deviceLabel}`, 'success');
-                
-                // Save settings
-                if (window.electronAPI) {
-                    await window.electronAPI.saveSettings({
-                        recordingDevice: deviceId,
-                        playbackDevice: document.getElementById('playbackDevice').value
-                    });
-                }
+                console.log('Audio level monitoring started');
             } catch (error) {
-                updateStatus('Error: ' + error.message, 'error');
+                console.error('Audio monitoring failed:', error);
+                throw error;
             }
-        });
+        }
         
         function monitorInputLevel() {
             if (!inputAnalyser) return;
@@ -393,7 +240,7 @@
             inputAnalyser.getByteFrequencyData(dataArray);
             const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
             const percentage = Math.min(100, (average / 128) * 100);
-            document.getElementById('recordingLevel').style.width = percentage + '%';
+            document.getElementById('inputLevel').style.width = percentage + '%';
             requestAnimationFrame(monitorInputLevel);
         }
         
@@ -407,23 +254,13 @@
         }
         
         async function startRecording() {
-            const deviceId = document.getElementById('recordingDevice').value;
-            if (!deviceId) {
-                updateStatus('Please select a recording device', 'error');
-                return;
-            }
-            
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({
-                    audio: { 
-                        deviceId: { exact: deviceId },
-                        echoCancellation: false,
-                        noiseSuppression: false,
-                        autoGainControl: false
-                    }
-                });
+                // Ensure audio monitoring is active
+                if (!inputStream) {
+                    await startAudioMonitoring();
+                }
                 
-                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder = new MediaRecorder(inputStream);
                 recordedChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
@@ -451,7 +288,6 @@
         function stopRecording() {
             if (mediaRecorder && mediaRecorder.state !== 'inactive') {
                 mediaRecorder.stop();
-                mediaRecorder.stream.getTracks().forEach(track => track.stop());
                 isRecording = false;
                 clearInterval(recordingInterval);
                 
@@ -477,19 +313,9 @@
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
             const filename = 'recording_' + timestamp + '.webm';
             
-            if (window.electronAPI) {
-                const arrayBuffer = await blob.arrayBuffer();
-                const result = await window.electronAPI.saveRecording(arrayBuffer, filename);
-                if (result.success) {
-                    lastRecordingPath = result.path;
-                    updateStatus('Recording saved: ' + filename, 'success');
-                } else {
-                    updateStatus('Error saving: ' + result.error, 'error');
-                }
-            } else {
-                lastRecordingPath = URL.createObjectURL(blob);
-                updateStatus('Recording saved (in memory)', 'success');
-            }
+            // Create blob URL for immediate playback
+            lastRecordingPath = URL.createObjectURL(blob);
+            updateStatus('Recording ready: ' + filename + ' (can play immediately)', 'success');
             
             window.lastRecordingBlob = blob;
         }
@@ -497,43 +323,22 @@
         // Playback
         async function playAudio() {
             const urlInput = document.getElementById('audioUrl').value;
-            const deviceId = document.getElementById('playbackDevice').value;
             
-            if (!deviceId) {
-                updateStatus('Please select a playback device', 'error');
+            let audioUrl = urlInput;
+            
+            // If no URL provided, use last recording if available
+            if (!audioUrl && lastRecordingPath) {
+                audioUrl = lastRecordingPath;
+                updateStatus('Playing last recording...', 'success');
+            } else if (!audioUrl) {
+                updateStatus('Please provide audio URL or record something first', 'error');
                 return;
             }
             
             try {
-                let audioUrl = urlInput;
-                
-                if (!audioUrl && window.electronAPI) {
-                    const filepath = await window.electronAPI.selectAudioFile();
-                    if (!filepath) return;
-                    audioUrl = 'file://' + filepath;
-                }
-                
-                if (audioUrl) {
-                    const audio = new Audio(audioUrl);
-                    if (audio.setSinkId) {
-                        await audio.setSinkId(deviceId);
-                    }
-                    audio.play();
-                    updateStatus('Playing audio...', 'success');
-                    
-                    // Simple level visualization
-                    audio.addEventListener('play', () => {
-                        const interval = setInterval(() => {
-                            if (audio.paused || audio.ended) {
-                                clearInterval(interval);
-                                document.getElementById('playbackLevel').style.width = '0%';
-                            } else {
-                                const level = 30 + Math.random() * 40;
-                                document.getElementById('playbackLevel').style.width = level + '%';
-                            }
-                        }, 100);
-                    });
-                }
+                const audio = new Audio(audioUrl);
+                audio.play();
+                updateStatus('Playing audio...', 'success');
             } catch (error) {
                 updateStatus('Error: ' + error.message, 'error');
             }
@@ -570,7 +375,7 @@
             const statusEl = document.getElementById('status');
             statusEl.textContent = message;
             statusEl.className = 'status';
-            if (type === 'error' || type === 'success' || type === 'warning') {
+            if (type === 'error' || type === 'success') {
                 statusEl.classList.add(type);
             }
         }

@@ -1,25 +1,10 @@
 {
   "name": "audio-control-panel",
   "version": "1.0.0",
-  "description": "Virtual Audio Cable Control Panel",
-  "main": "main.js",
+  "description": "Virtual Audio Cable Control Panel - Web App",
+  "main": "index.html",
   "scripts": {
-    "start": "electron .",
-    "build": "electron-builder",
-    "dist": "electron-builder --publish=never"
-  },
-  "devDependencies": {
-    "electron": "^27.0.0",
-    "electron-builder": "^24.6.4"
-  },
-  "build": {
-    "appId": "com.yourcompany.audiocontrol",
-    "productName": "Audio Control Panel",
-    "directories": {
-      "output": "dist"
-    },
-    "win": {
-      "target": "nsis"
-    }
+    "start": "python3 -m http.server 8000",
+    "serve": "python3 -m http.server 8000"
   }
 }
